@@ -29,12 +29,24 @@ EXCLUDE_FILETYPES: list = [
     '.gitignore',
     '.gitattributes',
     '.gitmodules',
+    '.toml',
+    '.yaml',
 ]
+
 
 @unique
 class TaskType(Enum):
     TODO = 0
     FIXME = 1
+
+
+@unique
+class CurrentOption(Enum):
+    NONE = 0
+    WL_EXT = 1
+    WL_DIR = 2
+    EX_FN = 3
+    EX_DIR = 4
 
 
 class Task:
@@ -45,43 +57,60 @@ class Task:
         self.task_type = task_type
 
 
-def print_directories(root_path, prefix: str = ''):
-    prefix = prefix + '    '
+def search_dir(root_path: str, 
+           whitelist_ext: list = None,
+           exclude_filenames: list = None,
+          ) -> list:
+    """ Recursively walks down directories from the root_path for TODOs and FIXMEs and         
+        returns a list of Task objects containing metadata about the findings.
 
-    if root_path is not None:
-        for pathx in root_path.iterdir():
-            if pathx.is_dir():
-                if pathx.name not in EXCLUDE_FOLDERS: 
-                    # print(f'{prefix}{pathx}')
-                    print_directories(pathx, prefix)
-            else:
-                if (pathx.suffix not in EXCLUDE_FILETYPES and
-                    pathx.name not in EXCLUDE_FILETYPES):
-                    print(f'{prefix}{pathx}')
+            Parameters:
+                root_path (str): The root directory to search
+                whitelist_ext (list): The list of extensions to whitelist
+                exclude_filenames (list): The list of filenames to filter out
 
-
-def search(root_path: str, whitelist: list = None) -> list:
+            Returns:
+                tasks (list): List of Task Objects containing metadata
+    """
     tasks: list = []
+    wle: bool = True
+    efn: bool = True
+
+    if whitelist_ext is None:
+        whitelist_ext = []
+        wle = False
+
+    if exclude_filenames is None:
+        exclude_filenames = []
+        efn = False
     
     for pathx in root_path.iterdir():
         if pathx.is_dir():
             if pathx.name not in EXCLUDE_FOLDERS:
-                tasks.extend(search(pathx, whitelist))
-        else:
-            if whitelist is None:
-                if (pathx.suffix not in EXCLUDE_FILETYPES and
-                    pathx.name not in EXCLUDE_FILETYPES):
-                    tasks.append(pathx)
-            else:
-                if (pathx.suffix not in EXCLUDE_FILETYPES and
-                    pathx.name not in EXCLUDE_FILETYPES and
-                    pathx.suffix in whitelist):
-                    # tasks.append(pathx)
-                    tasks.extend(find_task(pathx))
+                tasks.extend(search_dir(pathx, whitelist_ext, exclude_filenames))
+        elif (pathx.suffix not in EXCLUDE_FILETYPES and
+                pathx.name not in EXCLUDE_FILETYPES):
+                
+                if wle and pathx.suffix not in whitelist_ext:
+                    continue
+                if efn and pathx.name in exclude_filenames:
+                    continue
+                # tasks.append(pathx)
+                tasks.extend(search_file(pathx))
     return tasks
 
 
-def find_task(file_path: Path) -> list:
+def search_file(file_path: Path) -> list:
+    """ Searches through the file, at the passed file_path, for TODOs and FIXMEs.
+        Returns a list of Task objects containing metadata about the TODO.
+
+            Parameters:
+                file_path (Path): The path to the file
+
+            Returns:
+                tasks (list): A list of Task Objects containing metadata
+    """
+
     tasks: list = []
     
     with file_path.open() as f:
@@ -89,7 +118,6 @@ def find_task(file_path: Path) -> list:
         file_name: str = file_path.name
 
         for i, line in enumerate(lines):
-            # print(line)
             if 'TODO' in line or 'FIXME' in line:
                 task_type: TaskType = None
 
@@ -97,7 +125,7 @@ def find_task(file_path: Path) -> list:
                     task_type = TaskType.TODO
                 if 'FIXME' in line:
                     task_type = TaskType.FIXME
-
+                # FIXME(devon): Only remove the whitespaces that are in front
                 edited_line: str = re.sub(r'[\n\t\s]*', '', line)
                 tasks.append(Task(file_name, i, edited_line, task_type))
 
@@ -105,10 +133,14 @@ def find_task(file_path: Path) -> list:
 
 
 def print_help():
-    print('Usage: fixxet [root_path] [file_type_whitelist..] [options]')
-    print('Example: fixxet . -wl .py .json\n')
-    print('Commands: ')
-    print('-wl\tSet a whitelist filter')
+    """ Prints out the help menu to the console. """
+
+    print('Usage: fixxet [root_path] ([file_extension_whitelist..] | [filename_excludes..]) [options]')
+    print('Example: fixxet -wle .py .json')
+    print('         fixxet ./src -wle .zig .json -ef cimport.zig\n')
+    print('Options: ')
+    print('-wle\tSet a extension whitelist filter')
+    print('-ef\tAppend filename to the exclude filter')
     print('')
     print('General Options: ')
     print('-h, --help\tPrint usage information')
@@ -117,61 +149,70 @@ def print_help():
 def main():
     # The root directory to recursively check
     root_path: Path = None
-
-    # Extentsion
-    ext: str = ''
     
     # Check to see if the user requested help
     if '-h' in argv or '--help' in argv:
         print_help()
         return
 
-    arg_len: int = len(argv)
-    whitelist: list = []
+    current_option: CurrentOption = CurrentOption.NONE
+    whitelist_ext: list = []
+    exclude_dirs: list = []
+    exclude_filenames: list = []
 
-    append_wl: bool = False
-    
+    arg_len: int = len(argv)
+
     # If no root path was specified
     if arg_len == 1:
         root_path = Path('.')
     else:
         for i, arg in enumerate(argv):
             if i == 1:
-                root_path = Path(arg)
-            elif append_wl is True:
-                if '-' in arg:
-                    if arg.index('-') == 0:
-                        append_wl = False
-                        break
-                elif '--' in arg:
-                    if arg.index('--') == 0:
-                        append_wl = False
-                        break
+                if '-' in arg or '--' in arg:
+                    root_path = Path('.')
                 else:
-                    whitelist.append(arg)
-            elif '-wl' in arg:
-                append_wl = True
+                    root_path = Path(arg)
+                    continue
+            if '-wle' in arg:
+                current_option = CurrentOption.WL_EXT
+            elif '-ef' in arg:
+                current_option = CurrentOption.EX_FN
+            else:
+                if current_option == CurrentOption.WL_EXT:
+                    whitelist_ext.append(arg)
+                elif current_option == CurrentOption.EX_FN:
+                    exclude_filenames.append(arg)
     
     status_string: str = '[FIXXET] Searching in '
-    for wl_entry in whitelist:
-        status_string = status_string + f'{wl_entry} '
 
-    status_string = status_string + f' files from root: {root_path.absolute()}'
+    for wle_entry in whitelist_ext:
+        status_string = status_string + f'{wle_entry} '
+    status_string = status_string + f' files (excluding:'
+    
+    for ef_entry in exclude_filenames:
+        status_string = status_string + f' {ef_entry}'
+
+    status_string = status_string + f') from root: {root_path.absolute()}'
 
     print(status_string)
     
-    tasks: list = search(root_path, whitelist if len(whitelist) > 0 else None)
+    tasks: list = search_dir(
+        root_path, 
+        whitelist_ext if len(whitelist_ext) > 0 else None,
+        exclude_filenames if len(exclude_filenames) > 0 else None
+    )
     
     todos_count: int = 0
     fixmes_count: int = 0
 
     print('Found:')
     for task in tasks:
-        # print(f'\tLine {task.line_number}: {task.text}')
+        print(f'\t{task.file_name} on line {task.line_number}: {task.text}')
         if task.task_type == TaskType.TODO:
             todos_count += 1
         elif task.task_type == TaskType.FIXME:
             todos_count += 1
+    
 
     print(f'{todos_count} TODOs, {fixmes_count} FIXMEs')
 
