@@ -1,8 +1,15 @@
 ## fixxet
+![Showcase Image](/screenshots/showcase.PNG)
 __fixxet__ is a simple command-line script that will display all TODOs and FIXMEs.
 
 __*CURRENTLY ONLY TESTING ON WINDOWS*__
 
+### Installation
+1) Clone the repo
+	```python
+	git clone https://github.com/ZealousProgramming/fixxet.git
+	```
+2) Add the fixxet root directory to your `PATH`
 
 ### Usage
 ```python
@@ -32,7 +39,8 @@ fixxet run ./src -wle .zig -ef cimport.zig
 - [x] Add commands to the cli syntax
 - [x] Add `run` for running fixxet.
 - [x] Get standard builtin exclude folders and file extensions command `filter`
-- [ ] Add Option to print out filenames when searching `-p`
+- [x] Add Option to print out filenames when searching `-p`
+- [x] Add timer to output the time it took to search the files.
 - [ ] Linux Build
 - [ ] Determine the language for the file and look for the comment syntax of that language.
 - [ ] Setup script

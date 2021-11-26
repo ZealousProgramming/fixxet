@@ -2,6 +2,7 @@
 from sys import argv
 from pathlib import Path
 from enum import Enum, unique
+from time import perf_counter
 import re
 
 
@@ -65,27 +66,57 @@ class CurrentOption(Enum):
     EX_DIR = 4
 
 
+class SearchOptions():
+    """
+    A class to represent options that will alter the behavior of the search.
+
+    Attributes
+    ----------
+    print_filenames: str
+        Option to print the file names of the files searched through
+    whitelist_ext: list
+        List of file extensions to whitelist
+    exclude_dirs: list
+        List of directories to blacklist 
+    exclude_filenames: list
+        List of filenames to blacklist
+    """
+    def __init__(self, print_filenames):
+        self.print_filenames = print_filenames
+        self.whitelist_ext = []
+        self.exclude_dirs = []
+        self.exclude_filenames = []
+
+
 class Task:
-    def __init__(self, file_name:str, line_number: int, text: str, task_type: TaskType):
-        self.file_name = file_name
+    """ 
+    A class to represent the metadata of the TODO/FIXME.
+
+    Attributes
+    ----------
+    filename: str
+        The name of the file that contains the TODO/FIXME
+    line_number: int
+        The number of the line where the TODO/FIXME was found
+    text: str
+        The TODO/FIXME comment
+    task_type: TaskType
+        The type of the task either TaskType.TODO or TaskType.FIXME
+    """
+    def __init__(self, filename: str, line_number: int, text: str, task_type: TaskType):
+        self.filename = filename
         self.line_number = line_number
         self.text = text
         self.task_type = task_type
 
 
-def search_dir(root_path: str, 
-           whitelist_ext: list = None,
-           exclude_dirs: list = None,
-           exclude_filenames: list = None,
-          ) -> list:
+def search_dir(root_path: str, options: SearchOptions) -> list:
     """ Recursively walks down directories from the root_path for TODOs and FIXMEs and         
         returns a list of Task objects containing metadata about the findings.
 
             Parameters:
                 root_path (str): The root directory to search
-                whitelist_ext (list): The list of extensions to whitelist
-                exclude_dirs (list): The list of directories to blacklist
-                exclude_filenames (list): The list of filenames to blacklist
+                options (SearchOptions): Options that can alter the behavior of the search
 
             Returns:
                 tasks (list): List of Task Objects containing metadata
@@ -95,48 +126,42 @@ def search_dir(root_path: str,
     ed: bool = True
     efn: bool = True
 
-    if whitelist_ext is None:
-        whitelist_ext = []
+    if len(options.whitelist_ext) == 0:
         wle = False
 
-    if exclude_dirs is None:
-        exclude_dirs = []
+    if len(options.exclude_dirs) == 0:
         ed = False
 
-    if exclude_filenames is None:
-        exclude_filenames = []
+    if len(options.exclude_filenames) == 0:
         efn = False
     
     for pathx in root_path.iterdir():
         if pathx.is_dir():
             if pathx.name not in EXCLUDE_FOLDERS:
-                if ed and pathx.name in exclude_dirs:
+                if ed and pathx.name in options.exclude_dirs:
                     continue
 
-                tasks.extend(search_dir(
-                    pathx, 
-                    whitelist_ext if wle else None, 
-                    exclude_dirs if ed else None, 
-                    exclude_filenames if efn else None, 
-                ))
+                tasks.extend(search_dir(pathx, options))
         elif (pathx.suffix not in EXCLUDE_FILETYPES and
                 pathx.name not in EXCLUDE_FILETYPES):
                 
-                if wle and pathx.suffix not in whitelist_ext:
+                if wle and pathx.suffix not in options.whitelist_ext:
                     continue
-                if efn and pathx.name in exclude_filenames:
+                if efn and pathx.name in options.exclude_filenames:
                     continue
 
-                tasks.extend(search_file(pathx))
+                tasks.extend(search_file(pathx, options))
+
     return tasks
 
 
-def search_file(file_path: Path) -> list:
+def search_file(file_path: Path, options: SearchOptions) -> list:
     """ Searches through the file, at the passed file_path, for TODOs and FIXMEs.
         Returns a list of Task objects containing metadata about the TODO.
 
             Parameters:
                 file_path (Path): The path to the file
+                options (SearchOptions): Options that can alter the behavior of the search
 
             Returns:
                 tasks (list): A list of Task Objects containing metadata
@@ -145,9 +170,11 @@ def search_file(file_path: Path) -> list:
     tasks: list = []
     
     with file_path.open() as f:
-        file_name: str = file_path.name
-        print(file_name)
+        filename: str = file_path.name
         lines: list = f.read().splitlines()
+        
+        if options.print_filenames is True:
+            print(filename)
 
         for i, line in enumerate(lines):
             if 'TODO' in line or 'FIXME' in line:
@@ -168,7 +195,7 @@ def search_file(file_path: Path) -> list:
                         break
 
                 tasks.append(
-                    Task(file_name, i, edited_line, task_type)
+                    Task(filename, i, edited_line, task_type)
                 )
 
     return tasks
@@ -189,6 +216,7 @@ def print_help():
     print('-wle\tSet a extension whitelist filter')
     print('-ef\tAppend filename to the exclude filter')
     print('-ed\tAppend directory to the exclude filter')
+    print('-p\tPrint out the filenames while searching')
     print('')
     print('General Options: ')
     print('-h, --help\tPrint usage information')
@@ -196,6 +224,7 @@ def print_help():
 
 def print_filter():
     """ Prints out the builtin blacklist filters to the console. """
+
     print('Filters:')
     print('----------')
     print('Directories:')
@@ -215,6 +244,7 @@ def parse_command(arg: str) -> bool:
             Returns:
                 result (bool): Whether or not the execution chain should continue.
     """
+
     if arg not in COMMANDS:
         print(f"[FIXXET] '{arg}' is not a valid command, please revise and try again. For the list of valid commands, run 'fixxet -help'.")
         return False
@@ -237,9 +267,7 @@ def main():
         return
 
     current_option: CurrentOption = CurrentOption.NONE
-    whitelist_ext: list = []
-    exclude_dirs: list = []
-    exclude_filenames: list = []
+    options: SearchOptions = SearchOptions(False)
 
     arg_len: int = len(argv)
 
@@ -260,57 +288,57 @@ def main():
                 else:
                     root_path = Path(arg)
                     continue
-            if '-wle' in arg:
+            if '-wle' == arg:
                 current_option = CurrentOption.WL_EXT
-            elif '-ed' in arg:
+            elif '-ed' == arg:
                 current_option = CurrentOption.EX_DIR
-            elif '-ef' in arg:
+            elif '-ef' == arg:
                 current_option = CurrentOption.EX_FN
+            elif '-p' == arg:
+                options.print_filenames = True
             else:
                 if current_option == CurrentOption.WL_EXT:
-                    whitelist_ext.append(arg)
+                    options.whitelist_ext.append(arg)
                 elif current_option == CurrentOption.EX_DIR:
-                    exclude_dirs.append(arg)
+                    options.exclude_dirs.append(arg)
                 elif current_option == CurrentOption.EX_FN:
-                    exclude_filenames.append(arg)
+                    options.exclude_filenames.append(arg)
     
     status_string: str = '[FIXXET] Searching in '
 
-    for wle_entry in whitelist_ext:
+    for wle_entry in options.whitelist_ext:
         status_string = status_string + f'{wle_entry} '
 
     status_string = status_string + f' files (excluding files:'
-    for ef_entry in exclude_filenames:
+    for ef_entry in options.exclude_filenames:
         status_string = status_string + f' {ef_entry}'
 
     status_string = status_string + f') not in folders ('
-    for ed_entry in exclude_dirs:
+    for ed_entry in options.exclude_dirs:
         status_string = status_string + f' {ed_entry}'
 
     status_string = status_string + f') starting from root: {root_path.absolute()}'
 
     print(status_string)
+
+    start_time: float = perf_counter()
     
-    tasks: list = search_dir(
-        root_path, 
-        whitelist_ext if len(whitelist_ext) > 0 else None,
-        exclude_dirs if len(exclude_dirs) > 0 else None,
-        exclude_filenames if len(exclude_filenames) > 0 else None
-    )
+    tasks: list = search_dir(root_path, options)
     
+    end_time: float = perf_counter() - start_time
     todos_count: int = 0
     fixmes_count: int = 0
 
     print('Found:')
     for task in tasks:
-        print(f'\t{task.file_name} on line {task.line_number}: {task.text}')
+        print(f'\t{task.filename} on line {task.line_number}: {task.text}')
         if task.task_type == TaskType.TODO:
             todos_count += 1
         elif task.task_type == TaskType.FIXME:
             todos_count += 1
     
 
-    print(f'{todos_count} TODOs, {fixmes_count} FIXMEs')
+    print(f'{todos_count} TODOs, {fixmes_count} FIXMEs in {"{:0.4f}".format(end_time)}s')
 
 
 if __name__ == '__main__':
