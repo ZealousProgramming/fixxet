@@ -11,6 +11,8 @@ EXCLUDE_FOLDERS: list = [
     'out',
     '.vscode',
     '__pycache__',
+    'zig-out',
+    'zig-cache',
 ]
 
 EXCLUDE_FILETYPES: list = [
@@ -31,6 +33,20 @@ EXCLUDE_FILETYPES: list = [
     '.gitmodules',
     '.toml',
     '.yaml',
+    '.wav',
+    '.mp3',
+    '.ogg',
+    '.png',
+    '.jpeg',
+    '.bmp',
+    '.ps',
+    '.lnk',
+    '.leo',
+]
+
+COMMANDS: list = [
+    'run',
+    'filter',
 ]
 
 
@@ -59,6 +75,7 @@ class Task:
 
 def search_dir(root_path: str, 
            whitelist_ext: list = None,
+           exclude_dirs: list = None,
            exclude_filenames: list = None,
           ) -> list:
     """ Recursively walks down directories from the root_path for TODOs and FIXMEs and         
@@ -67,18 +84,24 @@ def search_dir(root_path: str,
             Parameters:
                 root_path (str): The root directory to search
                 whitelist_ext (list): The list of extensions to whitelist
-                exclude_filenames (list): The list of filenames to filter out
+                exclude_dirs (list): The list of directories to blacklist
+                exclude_filenames (list): The list of filenames to blacklist
 
             Returns:
                 tasks (list): List of Task Objects containing metadata
     """
     tasks: list = []
     wle: bool = True
+    ed: bool = True
     efn: bool = True
 
     if whitelist_ext is None:
         whitelist_ext = []
         wle = False
+
+    if exclude_dirs is None:
+        exclude_dirs = []
+        ed = False
 
     if exclude_filenames is None:
         exclude_filenames = []
@@ -87,7 +110,15 @@ def search_dir(root_path: str,
     for pathx in root_path.iterdir():
         if pathx.is_dir():
             if pathx.name not in EXCLUDE_FOLDERS:
-                tasks.extend(search_dir(pathx, whitelist_ext, exclude_filenames))
+                if ed and pathx.name in exclude_dirs:
+                    continue
+
+                tasks.extend(search_dir(
+                    pathx, 
+                    whitelist_ext if wle else None, 
+                    exclude_dirs if ed else None, 
+                    exclude_filenames if efn else None, 
+                ))
         elif (pathx.suffix not in EXCLUDE_FILETYPES and
                 pathx.name not in EXCLUDE_FILETYPES):
                 
@@ -95,7 +126,7 @@ def search_dir(root_path: str,
                     continue
                 if efn and pathx.name in exclude_filenames:
                     continue
-                # tasks.append(pathx)
+
                 tasks.extend(search_file(pathx))
     return tasks
 
@@ -114,8 +145,9 @@ def search_file(file_path: Path) -> list:
     tasks: list = []
     
     with file_path.open() as f:
-        lines: list = f.read().splitlines()
         file_name: str = file_path.name
+        print(file_name)
+        lines: list = f.read().splitlines()
 
         for i, line in enumerate(lines):
             if 'TODO' in line or 'FIXME' in line:
@@ -135,21 +167,60 @@ def search_file(file_path: Path) -> list:
 def print_help():
     """ Prints out the help menu to the console. """
 
-    print('Usage: fixxet [root_path] ([file_extension_whitelist..] | [filename_excludes..]) [options]')
-    print('Example: fixxet -wle .py .json')
-    print('         fixxet ./src -wle .zig .json -ef cimport.zig\n')
+    print('Usage: fixxet command [root_path] ([file_extension_whitelist..] | [filename_excludes..] | [directory_excludes..]) [options]')
+    print('Example: fixxet run -wle .py .json')
+    print('         fixxet run ./src -wle .zig .json -ef cimport.zig\n')
+
+    print('Commands: ')
+    print('run\tRuns fixxet')
+    print('filter\tPrints the list of standard folders and file extensions to blacklist')
+    print('')
     print('Options: ')
     print('-wle\tSet a extension whitelist filter')
     print('-ef\tAppend filename to the exclude filter')
+    print('-ed\tAppend directory to the exclude filter')
     print('')
     print('General Options: ')
     print('-h, --help\tPrint usage information')
 
 
+def print_filter():
+    """ Prints out the builtin blacklist filters to the console. """
+    print('Filters:')
+    print('----------')
+    print('Directories:')
+    for d in EXCLUDE_FOLDERS:
+        print(f'\t{d}')
+    print('Extensions:')
+    for e in EXCLUDE_FILETYPES:
+        print(f'\t{e}')
+
+
+def parse_command(arg: str) -> bool:
+    """ Parses the argument and returns if the execution chain should continue.
+            
+            Parameters:
+                arg (str): The argument from argv to parse
+
+            Returns:
+                result (bool): Whether or not the execution chain should continue.
+    """
+    if arg not in COMMANDS:
+        print(f"[FIXXET] '{arg}' is not a valid command, please revise and try again. For the list of valid commands, run 'fixxet -help'.")
+        return False
+    elif arg == 'run':
+        return True
+    elif arg == 'filter':
+        print_filter()
+        return False
+
 def main():
     # The root directory to recursively check
     root_path: Path = None
     
+    if '--h' in argv or '-help' in argv:
+        print(f'[FIXXET] {argv} is not a valid command. \nTry fixxet -h or fixxet --help')
+        return
     # Check to see if the user requested help
     if '-h' in argv or '--help' in argv:
         print_help()
@@ -163,11 +234,17 @@ def main():
     arg_len: int = len(argv)
 
     # If no root path was specified
-    if arg_len == 1:
+    if arg_len == 2:
         root_path = Path('.')
+        if parse_command(argv[1]) is False:
+            return
+        
     else:
         for i, arg in enumerate(argv):
             if i == 1:
+                if parse_command(arg) is False:
+                    return
+            elif i == 2:
                 if '-' in arg or '--' in arg:
                     root_path = Path('.')
                 else:
@@ -175,11 +252,15 @@ def main():
                     continue
             if '-wle' in arg:
                 current_option = CurrentOption.WL_EXT
+            elif '-ed' in arg:
+                current_option = CurrentOption.EX_DIR
             elif '-ef' in arg:
                 current_option = CurrentOption.EX_FN
             else:
                 if current_option == CurrentOption.WL_EXT:
                     whitelist_ext.append(arg)
+                elif current_option == CurrentOption.EX_DIR:
+                    exclude_dirs.append(arg)
                 elif current_option == CurrentOption.EX_FN:
                     exclude_filenames.append(arg)
     
@@ -187,18 +268,23 @@ def main():
 
     for wle_entry in whitelist_ext:
         status_string = status_string + f'{wle_entry} '
-    status_string = status_string + f' files (excluding:'
-    
+
+    status_string = status_string + f' files (excluding files:'
     for ef_entry in exclude_filenames:
         status_string = status_string + f' {ef_entry}'
 
-    status_string = status_string + f') from root: {root_path.absolute()}'
+    status_string = status_string + f') not in folders ('
+    for ed_entry in exclude_dirs:
+        status_string = status_string + f' {ed_entry}'
+
+    status_string = status_string + f') starting from root: {root_path.absolute()}'
 
     print(status_string)
     
     tasks: list = search_dir(
         root_path, 
         whitelist_ext if len(whitelist_ext) > 0 else None,
+        exclude_dirs if len(exclude_dirs) > 0 else None,
         exclude_filenames if len(exclude_filenames) > 0 else None
     )
     

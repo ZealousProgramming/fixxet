@@ -7,26 +7,31 @@ __*CURRENTLY ONLY TESTING ON WINDOWS*__
 ### Usage
 ```python
 # This will run setting the root directory to the current working directory.
-fixxet
+fixxet run
 
 # For help:
 fixxet -h
 fixxet --help
 
+# List builtin filters
+fixxet filter
+
 # Set the root to the currect directory, and use a whitelist of .py, and .json.
-fixxet -wle .py .json
+fixxet run -wle .py .json
 
 # Use a whitelist for .py, .json extentions, and append cimport to the exclude filter.
-fixxet -wle .zig -ef cimport.zig
+fixxet run -wle .zig -ef cimport.zig
 
 # Set the root to ./src
-fixxet ./src -wle .zig -ef cimport.zig
+fixxet run ./src -wle .zig -ef cimport.zig
 ```
 
 ### Future Features
-- [ ] Append Directories to the Exclude filter with `-ed`
-- [ ] Use a whitelist for directories with `-wld`
+- [x] Append Directories to the Exclude filter with `-ed`
 - [x] Append filename to the Exclude filter with `-ef`
 - [ ] Determine the language for the file and look for the comment syntax of that language.
+- [x] Add commands to the cli syntax
+- [x] Add `run` for running fixxet.
+- [x] Get standard builtin exclude folders and file extensions command `filter`
 - [ ] Linux Build
 - [ ] Setup script
