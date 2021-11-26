@@ -29,9 +29,10 @@ fixxet run ./src -wle .zig -ef cimport.zig
 ### Future Features
 - [x] Append Directories to the Exclude filter with `-ed`
 - [x] Append filename to the Exclude filter with `-ef`
-- [ ] Determine the language for the file and look for the comment syntax of that language.
 - [x] Add commands to the cli syntax
 - [x] Add `run` for running fixxet.
 - [x] Get standard builtin exclude folders and file extensions command `filter`
+- [ ] Add Option to print out filenames when searching `-p`
 - [ ] Linux Build
+- [ ] Determine the language for the file and look for the comment syntax of that language.
 - [ ] Setup script

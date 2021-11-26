@@ -157,9 +157,19 @@ def search_file(file_path: Path) -> list:
                     task_type = TaskType.TODO
                 if 'FIXME' in line:
                     task_type = TaskType.FIXME
-                # FIXME(devon): Only remove the whitespaces that are in front
-                edited_line: str = re.sub(r'[\n\t\s]*', '', line)
-                tasks.append(Task(file_name, i, edited_line, task_type))
+
+                edited_line: str = ""  #re.sub(r'[\n\t\s]*', '', line)
+                
+                for j, char in enumerate(line):
+                    if char == '\s' or char == ' ':
+                        continue
+                    else:
+                        edited_line = line[j:]
+                        break
+
+                tasks.append(
+                    Task(file_name, i, edited_line, task_type)
+                )
 
     return tasks
 
