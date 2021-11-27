@@ -272,11 +272,13 @@ def main():
     arg_len: int = len(argv)
 
     # If no root path was specified
-    if arg_len == 2:
+    if arg_len == 1:
+        print_help()
+        return
+    elif arg_len == 2:
         root_path = Path('.')
         if parse_command(argv[1]) is False:
             return
-        
     else:
         for i, arg in enumerate(argv):
             if i == 1:
